@@ -40,9 +40,6 @@
 			const pos = new THREE.Vector3();
 			const quat = new THREE.Quaternion();
 
-			const mouse = new THREE.Vector2();
-			const target = new THREE.Vector2();
-
 			// Physics variables
 			//const gravityConstant = - 9.8;
 			//const gravityConstant = - 1;
@@ -516,13 +513,6 @@
 
 			function animate() {
 
-				/*
-				target.x = ( 1 - mouse.x ) * 0.0002;
-				target.y = ( 1 - mouse.y ) * 0.0002;
-				
-				camera.rotation.x += 0.05 * ( target.y - camera.rotation.x );
-				camera.rotation.y += 0.05 * ( target.x - camera.rotation.y );
-*/
 				requestAnimationFrame( animate );
 
 				render();
