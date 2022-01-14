@@ -29,6 +29,10 @@
 			import { RoughnessMipmapper } from './jsm/utils/RoughnessMipmapper.js';
 
 			// Graphics variables
+			var mouseMesh;
+			var ballObjects = [];
+			var mouse = {x: 0, y: 0};
+
 			let container, stats;
 			let camera, controls, scene, renderer;
 			let textureLoader;
@@ -70,6 +74,14 @@
 				createObjects();
 
 				initInput();
+
+
+				//Mouse Interactive
+				createMouseGeometry();
+
+				// When the mouse moves, call the given function
+				window.addEventListener('mousemove', onMouseMove, false);
+				window.addEventListener( 'resize', onWindowResize );
 
 			}
 
@@ -166,7 +178,14 @@
 				stats.domElement.style.top = '0px';
 				container.appendChild( stats.domElement );
 
+				/*
+				//Mouse Interactive
+				createMouseGeometry();
+
+				// When the mouse moves, call the given function
+				window.addEventListener('mousemove', onMouseMove, false);
 				window.addEventListener( 'resize', onWindowResize );
+				*/
 
 			}
 
@@ -209,7 +228,7 @@
 
 				new RGBELoader()
 					.setPath( 'textures/' )
-					.load( 'Studio.hdr', function ( texture ) {
+					.load( 'studio.hdr', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -239,7 +258,7 @@
 									sockBufferGeom.rotateX(-Math.PI/1.7);
 									sockBufferGeom.rotateY(Math.PI/1.8);
 									sockBufferGeom.scale(1.1, 1.1, 1.1);
-									sockBufferGeom.translate ( 0, 14, 0 )
+									sockBufferGeom.translate ( 0, 15, 0 )
 
 								}
 							})
@@ -468,10 +487,26 @@
 
 				} );
 
+				window.addEventListener('pointerup', function(event){
+					clickRequest = false;
+					for (var i=0; i<ballObjects.length; i++) {
+						try {
+							//ballObjects[i].dispose();
+							scene.remove(ballObjects[i]);
+						} catch (e) {
+							
+						}
+						
+					}
+					ballObjects = [];
+					//console.log("ball objects length: " + ballObjects.length);
+				});
+
 			}
 
 			function processClick() {
 
+				/*
 				if ( clickRequest ) {
 
 					raycaster.setFromCamera( mouseCoords, camera );
@@ -498,8 +533,59 @@
 					clickRequest = false;
 
 				}
+				*/
 
 			}
+
+			function createMouseGeometry(){
+				var mouseGeometry = new THREE.SphereGeometry(10, 0, 0);
+				var mouseMaterial = new THREE.MeshBasicMaterial({
+					color: 0x0000ff
+				});
+				mouseMesh = new THREE.Mesh(mouseGeometry, mouseMaterial);
+				mouseMesh.position.z = 0;
+				//scene.add(mouseMesh);
+			}
+
+			// Follows the mouse event
+			function onMouseMove(event) {
+
+				// Update the mouse variable
+				event.preventDefault();
+				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+				mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+				// Make the sphere follow the mouse
+				var vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+				vector.unproject( camera );
+				var dir = vector.sub( camera.position ).normalize();
+				var distance = - camera.position.z / dir.z;
+				var pos = camera.position.clone().add( dir.multiplyScalar( distance ) );
+				mouseMesh.position.copy(pos);
+
+				if(clickRequest && ballObjects.length < 20){
+
+					const ballMass = 0.1;
+					const ballRadius = 4;
+
+					const ball = new THREE.Mesh( new THREE.SphereGeometry( ballRadius, 18, 16 ), ballMaterial );
+					ball.castShadow = true;
+					ball.receiveShadow = true;
+					const ballShape = new Ammo.btSphereShape( ballRadius );
+					ballShape.setMargin( margin );
+					quat.set( 0, 0, 0, 1 );
+					const ballBody = createRigidBody( ball, ballShape, ballMass, pos, quat );
+					ballBody.setFriction( 0 );
+
+					//scene.add(ball);
+					ballObjects.push(ball);
+
+					ball.position.copy(pos);
+
+					//console.log("ball objects length: " + ballObjects.length);
+				}	
+
+			};
 
 			function onWindowResize() {
 
@@ -509,7 +595,6 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
 			}
-
 
 			function animate() {
 
