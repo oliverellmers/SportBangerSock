@@ -1,0 +1,715 @@
+<html lang="en">
+	<head>
+		<title>Ammo.js softbody volume demo</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+		<style>
+			body {
+				color: #333;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="container"></div>
+
+		<script src="js/libs/ammo.wasm.js"></script>
+
+		<script type="module">
+
+			import * as THREE from './build/three.module.js';
+
+			import Stats from './jsm/libs/stats.module.js';
+
+			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import * as BufferGeometryUtils from './jsm/utils/BufferGeometryUtils.js';
+
+			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+			import { RGBELoader } from './jsm/loaders/RGBELoader.js';
+			import { RoughnessMipmapper } from './jsm/utils/RoughnessMipmapper.js';
+
+			// Graphics variables
+			var mouseMesh;
+			var ballObjects = [];
+			var mouse = {x: 0, y: 0};
+
+			let container, stats;
+			let camera, controls, scene, renderer;
+			let textureLoader;
+			const clock = new THREE.Clock();
+			let clickRequest = false;
+			const mouseCoords = new THREE.Vector2();
+			const raycaster = new THREE.Raycaster();
+			const ballMaterial = new THREE.MeshPhongMaterial( { color: 0x202020 } );
+			const pos = new THREE.Vector3();
+			const quat = new THREE.Quaternion();
+
+			// Physics variables
+			//const gravityConstant = - 9.8;
+			//const gravityConstant = - 1;
+			//const gravityConstant = 0;
+			const gravityConstant = - 9.8 * 20;
+			let physicsWorld;
+			const rigidBodies = [];
+			const softBodies = [];
+			const margin = 0.01;
+			let transformAux1;
+			let softBodyHelpers;
+
+			Ammo().then( function ( AmmoLib ) {
+
+				Ammo = AmmoLib;
+
+				init();
+				animate();
+
+			} );
+
+			function init() {
+
+				initGraphics();
+
+				initPhysics();
+
+				createObjects();
+
+				initInput();
+
+
+				//Mouse Interactive
+				createMouseGeometry();
+
+				// When the mouse moves, call the given function
+				window.addEventListener('mousemove', onMouseMove, false);
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function initGraphics() {
+
+				container = document.getElementById( 'container' );
+
+				//Scene
+
+				camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 0.2, 2000 );
+
+				scene = new THREE.Scene();
+				//scene.background = new THREE.Color( 0xFFFFFF );
+				var fogColor = new THREE.Color(0x000033);
+ 
+				scene.background = fogColor;
+				scene.fog = new THREE.Fog(fogColor, 500, 1000);
+
+
+				camera.position.set( -200, -400, -200 );
+				camera.lookAt(0, -100, 0 );
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1;
+				renderer.shadowMap.enabled = true;
+				renderer.outputEncoding = THREE.sRGBEncoding;
+				container.appendChild( renderer.domElement );
+
+				textureLoader = new THREE.TextureLoader();
+
+
+				//Lights
+
+				const ambientLight = new THREE.AmbientLight( 0x404040 );
+				scene.add( ambientLight );
+
+				const light = new THREE.DirectionalLight( 0xffffff, 1 );
+				light.position.set( - 10, -5, 5 );
+				light.castShadow = true;
+				const d = 20;
+				light.shadow.camera.left = - d;
+				light.shadow.camera.right = d;
+				light.shadow.camera.top = d;
+				light.shadow.camera.bottom = - d;
+
+				light.shadow.camera.near = 2;
+				light.shadow.camera.far = 50;
+
+				light.shadow.mapSize.x = 1024;
+				light.shadow.mapSize.y = 1024;
+
+				scene.add( light );
+
+
+				// Ceiling
+
+				const roughnessMipmapper = new RoughnessMipmapper( renderer );
+				const loader = new GLTFLoader().setPath( 'models/' );
+				var ceiling0, ceiling1, ceiling2;
+				loader.load( 'Ceiling.gltf', function ( gltf ) {
+
+					gltf.scene.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+							roughnessMipmapper.generateMipmaps( child.material );
+						}
+					});
+					scene.scale.set( 1.6, 1.6, 1.6);
+
+					ceiling0 = gltf.scene;
+
+					ceiling1 = gltf.scene.clone();
+					ceiling1.position.set( 384, 0, 0);
+					ceiling1.traverse( function ( child ) {
+						if(child.name == "SmokeDetector"){
+							child.visible = false;
+						}
+					});
+
+					ceiling2 = gltf.scene.clone();
+					ceiling2.position.set( 0, 0, 384);
+					ceiling2.traverse( function ( child ) {
+						if(child.name == "SmokeDetector"){
+							child.visible = false;
+						}
+					});
+					scene.add( ceiling0 );
+					scene.add( ceiling1 );
+					scene.add( ceiling2 );
+				});
+
+				//Stats
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				container.appendChild( stats.domElement );
+
+				/*
+				//Mouse Interactive
+				createMouseGeometry();
+
+				// When the mouse moves, call the given function
+				window.addEventListener('mousemove', onMouseMove, false);
+				window.addEventListener( 'resize', onWindowResize );
+				*/
+
+			}
+
+			function initPhysics() {
+
+				// Physics configuration
+
+				const collisionConfiguration = new Ammo.btSoftBodyRigidBodyCollisionConfiguration();
+				const dispatcher = new Ammo.btCollisionDispatcher( collisionConfiguration );
+				const broadphase = new Ammo.btDbvtBroadphase();
+				const solver = new Ammo.btSequentialImpulseConstraintSolver();
+				const softBodySolver = new Ammo.btDefaultSoftBodySolver();
+				physicsWorld = new Ammo.btSoftRigidDynamicsWorld( dispatcher, broadphase, solver, collisionConfiguration, softBodySolver );
+				physicsWorld.setGravity( new Ammo.btVector3( 0, gravityConstant, 0 ) );
+				physicsWorld.getWorldInfo().set_m_gravity( new Ammo.btVector3( 0, gravityConstant, 0 ) );
+
+				transformAux1 = new Ammo.btTransform();
+				softBodyHelpers = new Ammo.btSoftBodyHelpers();
+
+			}
+
+			function createObjects() {
+				const volumeMass = 0.5;
+				const volumePressure = 200;
+
+				// Ground
+
+				/*
+				pos.set( 0, -30, 0 );
+				quat.set( 0, 0, 0, 1 );
+				const ground = createParalellepiped( 400, 1, 400, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0xFFFFFF } ) );
+				ground.castShadow = true;
+				ground.receiveShadow = true;
+				ground.visible = false;
+				*/
+				
+				
+				
+
+				//Sock Buffer Geometry 
+
+				var sock, sockBufferGeom;
+
+				new RGBELoader()
+					.setPath( 'textures/' )
+					.load( 'studio.hdr', function ( texture ) {
+
+						texture.mapping = THREE.EquirectangularReflectionMapping;
+
+						scene.background = texture;
+						scene.environment = texture;
+
+						render();
+
+						const roughnessMipmapper = new RoughnessMipmapper( renderer );
+
+						const loader = new GLTFLoader().setPath( 'models/' );
+						loader.load( 'SockMaster.gltf', function ( gltf ) {
+
+							gltf.scene.traverse( function ( child ) {
+
+								if ( child.isMesh ) {
+
+									roughnessMipmapper.generateMipmaps( child.material );
+								}
+
+							} );
+							sock = gltf.scene;
+
+							sock.traverse(function(child){
+								if(child.isMesh){
+									sockBufferGeom = child.geometry;
+									//sockBufferGeom.rotateX(-Math.PI/1.7);
+									//sockBufferGeom.rotateY(Math.PI/1.8);
+									sockBufferGeom.scale(1.1, 1.1, 1.1);
+									sockBufferGeom.translate ( 0, 0, 0 )
+
+								}
+							})
+
+
+							//scene.add( sock );
+							createSoftVolume(sockBufferGeom, volumeMass, volumePressure );
+
+							roughnessMipmapper.dispose();
+
+							render();
+
+						} );
+
+					} );
+			}
+
+			function processGeometry( bufGeometry ) {
+
+				// Ony consider the position values when merging the vertices
+				const posOnlyBufGeometry = new THREE.BufferGeometry();
+				posOnlyBufGeometry.setAttribute( 'position', bufGeometry.getAttribute( 'position' ) );
+				posOnlyBufGeometry.setIndex( bufGeometry.getIndex() );
+
+				// Merge the vertices so the triangle soup is converted to indexed triangles
+				const indexedBufferGeom = BufferGeometryUtils.mergeVertices( posOnlyBufGeometry );
+
+				// Create index arrays mapping the indexed vertices to bufGeometry vertices
+				mapIndices( bufGeometry, indexedBufferGeom );
+
+			}
+
+			function isEqual( x1, y1, z1, x2, y2, z2 ) {
+
+				const delta = 0.000001;
+				return Math.abs( x2 - x1 ) < delta &&
+						Math.abs( y2 - y1 ) < delta &&
+						Math.abs( z2 - z1 ) < delta;
+
+			}
+
+			function mapIndices( bufGeometry, indexedBufferGeom ) {
+
+				// Creates ammoVertices, ammoIndices and ammoIndexAssociation in bufGeometry
+
+				const vertices = bufGeometry.attributes.position.array;
+				const idxVertices = indexedBufferGeom.attributes.position.array;
+				const indices = indexedBufferGeom.index.array;
+
+				const numIdxVertices = idxVertices.length / 3;
+				const numVertices = vertices.length / 3;
+
+				bufGeometry.ammoVertices = idxVertices;
+				bufGeometry.ammoIndices = indices;
+				bufGeometry.ammoIndexAssociation = [];
+
+				for ( let i = 0; i < numIdxVertices; i ++ ) {
+
+					const association = [];
+					bufGeometry.ammoIndexAssociation.push( association );
+
+					const i3 = i * 3;
+
+					for ( let j = 0; j < numVertices; j ++ ) {
+
+						const j3 = j * 3;
+						if ( isEqual( idxVertices[ i3 ], idxVertices[ i3 + 1 ], idxVertices[ i3 + 2 ],
+							vertices[ j3 ], vertices[ j3 + 1 ], vertices[ j3 + 2 ] ) ) {
+
+							association.push( j3 );
+
+						}
+
+					}
+
+				}
+
+			}
+
+			function createSoftVolume( bufferGeom, mass, pressure ) {
+
+				processGeometry( bufferGeom );
+
+				const sockMaterial = new THREE.MeshStandardMaterial();
+				sockMaterial.metalness = 0.0;
+				sockMaterial.roughness = 0.9;
+
+				const volume = new THREE.Mesh( bufferGeom, sockMaterial );
+				volume.castShadow = true;
+				volume.receiveShadow = true;
+				volume.frustumCulled = false;
+				//scene.add( volume );
+
+
+				
+
+				textureLoader.load( 'textures/sock_5_TXTR.png', function ( texture ) {
+					
+					volume.material.map = texture;
+					volume.material.needsUpdate = true;
+
+				} );
+
+				textureLoader.load( 'textures/sock_5_NM.png', function ( texture ) {
+					
+					volume.material.normalMap = texture;
+					volume.material.needsUpdate = true;
+					scene.add( volume );
+
+				} );
+
+				// Volume physic object
+
+				const volumeSoftBody = softBodyHelpers.CreateFromTriMesh(
+					physicsWorld.getWorldInfo(),
+					bufferGeom.ammoVertices,
+					bufferGeom.ammoIndices,
+					bufferGeom.ammoIndices.length / 3,
+					true );
+
+				const sbConfig = volumeSoftBody.get_m_cfg();
+				sbConfig.set_viterations( 10 );
+				sbConfig.set_piterations( 10 );
+
+				// Soft-soft and soft-rigid collisions
+				sbConfig.set_collisions( 0x11 );
+
+				// Friction
+				sbConfig.set_kDF( 0.001 );
+				// Damping
+				sbConfig.set_kDP( 1 );
+				// Pressure
+				sbConfig.set_kPR( pressure );
+				// Stiffness
+				volumeSoftBody.get_m_materials().at( 0 ).set_m_kLST( 0.9 );
+				volumeSoftBody.get_m_materials().at( 0 ).set_m_kAST( 0.9 );
+
+				volumeSoftBody.setTotalMass( mass, false );
+				Ammo.castObject( volumeSoftBody, Ammo.btCollisionObject ).getCollisionShape().setMargin( margin );
+				physicsWorld.addSoftBody( volumeSoftBody, 1, - 1 );
+				volume.userData.physicsBody = volumeSoftBody;
+				// Disable deactivation
+				volumeSoftBody.setActivationState( 4 );
+
+
+				// Anchor
+				pos.set( 0, 0, 0 );
+				quat.set( 0, 0, 0, 1 );
+				const obstacle = createParalellepiped( 0.01, 0.01, 0.01, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0x606060 } ) );
+				scene.add(obstacle);
+
+
+				
+				const influence = 1;
+				
+				
+				//volumeSoftBody.appendAnchor( 10, obstacle.userData.physicsBody, false, influence );
+				
+				
+				for ( var i = 0; i <120; i ++ ){
+					volumeSoftBody.appendAnchor( i, obstacle.userData.physicsBody, false, influence );
+				}
+				
+				
+				
+
+
+				softBodies.push( volume );
+
+			}
+
+			function createParalellepiped( sx, sy, sz, mass, pos, quat, material ) {
+
+				const threeObject = new THREE.Mesh( new THREE.BoxGeometry( sx, sy, sz, 1, 1, 1 ), material );
+				const shape = new Ammo.btBoxShape( new Ammo.btVector3( sx * 0.5, sy * 0.5, sz * 0.5 ) );
+				shape.setMargin( margin );
+
+				createRigidBody( threeObject, shape, mass, pos, quat );
+
+				return threeObject;
+
+			}
+
+			function createRigidBody( threeObject, physicsShape, mass, pos, quat ) {
+
+				threeObject.position.copy( pos );
+				threeObject.quaternion.copy( quat );
+
+				const transform = new Ammo.btTransform();
+				transform.setIdentity();
+				transform.setOrigin( new Ammo.btVector3( pos.x, pos.y, pos.z ) );
+				transform.setRotation( new Ammo.btQuaternion( quat.x, quat.y, quat.z, quat.w ) );
+				const motionState = new Ammo.btDefaultMotionState( transform );
+
+				const localInertia = new Ammo.btVector3( 0, 0, 0 );
+				physicsShape.calculateLocalInertia( mass, localInertia );
+
+				const rbInfo = new Ammo.btRigidBodyConstructionInfo( mass, motionState, physicsShape, localInertia );
+				const body = new Ammo.btRigidBody( rbInfo );
+
+				threeObject.userData.physicsBody = body;
+
+				//HERE
+				//scene.add( threeObject );
+
+				if ( mass > 0 ) {
+
+					rigidBodies.push( threeObject );
+
+					// Disable deactivation
+					body.setActivationState( 4 );
+
+				}
+
+				physicsWorld.addRigidBody( body );
+
+				return body;
+
+			}
+
+			function initInput() {
+
+				window.addEventListener( 'pointerdown', function ( event ) {
+
+					if ( ! clickRequest ) {
+
+						mouseCoords.set(
+							( event.clientX / window.innerWidth ) * 2 - 1,
+							- ( event.clientY / window.innerHeight ) * 2 + 1
+						);
+
+						clickRequest = true;
+
+					}
+
+				} );
+
+				window.addEventListener('pointerup', function(event){
+					clickRequest = false;
+					for (var i=0; i<ballObjects.length; i++) {
+						try {
+							//ballObjects[i].dispose();
+							scene.remove(ballObjects[i]);
+						} catch (e) {
+							
+						}
+						
+					}
+					ballObjects = [];
+					//console.log("ball objects length: " + ballObjects.length);
+				});
+
+			}
+
+			function processClick() {
+
+				/*
+				if ( clickRequest ) {
+
+					raycaster.setFromCamera( mouseCoords, camera );
+
+					// Creates a ball
+					const ballMass = 2;
+					const ballRadius = 5;
+
+					const ball = new THREE.Mesh( new THREE.SphereGeometry( ballRadius, 18, 16 ), ballMaterial );
+					ball.castShadow = true;
+					ball.receiveShadow = true;
+					const ballShape = new Ammo.btSphereShape( ballRadius );
+					ballShape.setMargin( margin );
+					pos.copy( raycaster.ray.direction );
+					pos.add( raycaster.ray.origin);
+					quat.set( 0, 0, 0, 1 );
+					const ballBody = createRigidBody( ball, ballShape, ballMass, pos, quat );
+					ballBody.setFriction( 0 );
+
+					pos.copy( raycaster.ray.direction );
+					pos.multiplyScalar( 1000 );
+					ballBody.setLinearVelocity( new Ammo.btVector3( pos.x, pos.y, pos.z ) );
+
+					clickRequest = false;
+
+				}
+				*/
+
+			}
+
+			function createMouseGeometry(){
+				var mouseGeometry = new THREE.SphereGeometry(10, 0, 0);
+				var mouseMaterial = new THREE.MeshBasicMaterial({
+					color: 0x0000ff
+				});
+				mouseMesh = new THREE.Mesh(mouseGeometry, mouseMaterial);
+				mouseMesh.position.z = 0;
+				//scene.add(mouseMesh);
+			}
+
+			// Follows the mouse event
+			function onMouseMove(event) {
+
+				// Update the mouse variable
+				event.preventDefault();
+				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+				mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+				// Make the sphere follow the mouse
+				var vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+				vector.unproject( camera );
+				var dir = vector.sub( camera.position ).normalize();
+				var distance = - camera.position.z / dir.z;
+				var pos = camera.position.clone().add( dir.multiplyScalar( distance ) );
+				mouseMesh.position.copy(pos);
+
+				if(clickRequest && ballObjects.length < 20){
+
+					const ballMass = 1;
+					const ballRadius = 7;
+
+					const ball = new THREE.Mesh( new THREE.SphereGeometry( ballRadius, 18, 16 ), ballMaterial );
+					ball.castShadow = true;
+					ball.receiveShadow = true;
+					const ballShape = new Ammo.btSphereShape( ballRadius );
+					ballShape.setMargin( margin );
+					quat.set( 0, 0, 0, 1 );
+					const ballBody = createRigidBody( ball, ballShape, ballMass, pos, quat );
+					ballBody.setFriction( 0 );
+
+					scene.add(ball);
+					ballObjects.push(ball);
+
+					ball.position.copy(pos);
+
+					//console.log("ball objects length: " + ballObjects.length);
+				}	
+
+			};
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				render();
+				stats.update();
+
+			}
+
+			function render() {
+
+				const deltaTime = clock.getDelta();
+
+				updatePhysics( deltaTime );
+
+				processClick();
+
+				renderer.render( scene, camera );
+
+			}
+
+			function updatePhysics( deltaTime ) {
+
+				// Step world
+				physicsWorld.stepSimulation( deltaTime, 10 );
+
+
+
+				// Update soft volumes
+				for ( let i = 0, il = softBodies.length; i < il; i ++ ) {
+
+					
+
+					const volume = softBodies[ i ];
+					const geometry = volume.geometry;
+					const softBody = volume.userData.physicsBody;
+					const volumePositions = geometry.attributes.position.array;
+					const volumeNormals = geometry.attributes.normal.array;
+					const association = geometry.ammoIndexAssociation;
+					const numVerts = association.length;
+					const nodes = softBody.get_m_nodes();
+					for ( let j = 0; j < numVerts; j ++ ) {
+
+						const node = nodes.at( j );
+						const nodePos = node.get_m_x();
+						const x = nodePos.x();
+						const y = nodePos.y();
+						const z = nodePos.z();
+						const nodeNormal = node.get_m_n();
+						const nx = nodeNormal.x();
+						const ny = nodeNormal.y();
+						const nz = nodeNormal.z();
+
+						const assocVertex = association[ j ];
+
+						for ( let k = 0, kl = assocVertex.length; k < kl; k ++ ) {
+
+							let indexVertex = assocVertex[ k ];
+							volumePositions[ indexVertex ] = x;
+							volumeNormals[ indexVertex ] = nx;
+							indexVertex ++;
+							volumePositions[ indexVertex ] = y;
+							volumeNormals[ indexVertex ] = ny;
+							indexVertex ++;
+							volumePositions[ indexVertex ] = z;
+							volumeNormals[ indexVertex ] = nz;
+
+						}
+
+					}
+
+					geometry.attributes.position.needsUpdate = true;
+					geometry.attributes.normal.needsUpdate = true;
+
+				}
+
+				// Update rigid bodies
+				for ( let i = 0, il = rigidBodies.length; i < il; i ++ ) {
+
+					const objThree = rigidBodies[ i ];
+					const objPhys = objThree.userData.physicsBody;
+					const ms = objPhys.getMotionState();
+					if ( ms ) {
+
+						ms.getWorldTransform( transformAux1 );
+						const p = transformAux1.getOrigin();
+						const q = transformAux1.getRotation();
+						objThree.position.set( p.x(), p.y(), p.z() );
+						objThree.quaternion.set( q.x(), q.y(), q.z(), q.w() );
+
+					}
+
+				}
+
+			}
+
+		</script>
+
+	</body>
+</html>
