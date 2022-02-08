@@ -12,18 +12,13 @@
 	</head>
 	<body>
 		<div id="container"></div>
-
 		<script src="js/libs/ammo.wasm.js"></script>
-
 		<script type="module">
 
 			import * as THREE from './build/three.module.js';
-
 			import Stats from './jsm/libs/stats.module.js';
-
 			import { OrbitControls } from './jsm/controls/OrbitControls.js';
 			import * as BufferGeometryUtils from './jsm/utils/BufferGeometryUtils.js';
-
 			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
 			import { RGBELoader } from './jsm/loaders/RGBELoader.js';
 			import { RoughnessMipmapper } from './jsm/utils/RoughnessMipmapper.js';
@@ -45,9 +40,6 @@
 			const quat = new THREE.Quaternion();
 
 			// Physics variables
-			//const gravityConstant = - 9.8;
-			//const gravityConstant = - 1;
-			//const gravityConstant = 0;
 			const gravityConstant = - 9.8 * 20;
 			let physicsWorld;
 			const rigidBodies = [];
@@ -59,7 +51,6 @@
 			Ammo().then( function ( AmmoLib ) {
 
 				Ammo = AmmoLib;
-
 				init();
 				animate();
 
@@ -68,21 +59,14 @@
 			function init() {
 
 				initGraphics();
-
 				initPhysics();
-
 				createObjects();
-
 				initInput();
-
 
 				//Mouse Interactive
 				createMouseGeometry();
-
-				// When the mouse moves, call the given function
 				window.addEventListener('mousemove', onMouseMove, false);
 				window.addEventListener( 'resize', onWindowResize );
-
 			}
 
 			function initGraphics() {
@@ -90,11 +74,9 @@
 				container = document.getElementById( 'container' );
 
 				//Scene
-
 				camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 0.2, 2000 );
 
 				scene = new THREE.Scene();
-				//scene.background = new THREE.Color( 0xFFFFFF );
 				var fogColor = new THREE.Color(0x000033);
  
 				scene.background = fogColor;
@@ -115,9 +97,7 @@
 
 				textureLoader = new THREE.TextureLoader();
 
-
 				//Lights
-
 				const ambientLight = new THREE.AmbientLight( 0x404040 );
 				scene.add( ambientLight );
 
@@ -140,7 +120,6 @@
 
 
 				// Ceiling
-
 				const roughnessMipmapper = new RoughnessMipmapper( renderer );
 				const loader = new GLTFLoader().setPath( 'models/' );
 				var ceiling0, ceiling1, ceiling2;
@@ -177,21 +156,12 @@
 				});
 
 				//Stats
-
+				/*
 				stats = new Stats();
 				stats.domElement.style.position = 'absolute';
 				stats.domElement.style.top = '0px';
 				container.appendChild( stats.domElement );
-
-				/*
-				//Mouse Interactive
-				createMouseGeometry();
-
-				// When the mouse moves, call the given function
-				window.addEventListener('mousemove', onMouseMove, false);
-				window.addEventListener( 'resize', onWindowResize );
 				*/
-
 			}
 
 			function initPhysics() {
@@ -215,20 +185,6 @@
 			function createObjects() {
 				const volumeMass = 0.5;
 				const volumePressure = 200;
-
-				// Ground
-
-				/*
-				pos.set( 0, -30, 0 );
-				quat.set( 0, 0, 0, 1 );
-				const ground = createParalellepiped( 400, 1, 400, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0xFFFFFF } ) );
-				ground.castShadow = true;
-				ground.receiveShadow = true;
-				ground.visible = false;
-				*/
-				
-				
-				
 
 				//Sock Buffer Geometry 
 
@@ -256,27 +212,20 @@
 
 									roughnessMipmapper.generateMipmaps( child.material );
 								}
-
 							} );
 							sock = gltf.scene;
 
 							sock.traverse(function(child){
 								if(child.isMesh){
 									sockBufferGeom = child.geometry;
-									//sockBufferGeom.rotateX(-Math.PI/1.7);
-									//sockBufferGeom.rotateY(Math.PI/1.8);
 									sockBufferGeom.scale(1.1, 1.1, 1.1);
 									sockBufferGeom.translate ( 0, 0, 0 )
 
 								}
 							})
 
-
-							//scene.add( sock );
 							createSoftVolume(sockBufferGeom, volumeMass, volumePressure );
-
 							roughnessMipmapper.dispose();
-
 							render();
 
 						} );
@@ -339,11 +288,8 @@
 							association.push( j3 );
 
 						}
-
 					}
-
 				}
-
 			}
 
 			function createSoftVolume( bufferGeom, mass, pressure ) {
@@ -360,17 +306,18 @@
 				volume.frustumCulled = false;
 				//scene.add( volume );
 
+				var folder = 'textures/SockTextures/';
+				var sockTex = 'Sock_3.png';
 
-				
-
-				textureLoader.load( 'textures/sock_5_TXTR.png', function ( texture ) {
+				var path = folder + sockTex;
+				textureLoader.load( path, function ( texture ) {
 					
 					volume.material.map = texture;
 					volume.material.needsUpdate = true;
 
 				} );
 
-				textureLoader.load( 'textures/sock_5_NM.png', function ( texture ) {
+				textureLoader.load( 'textures/Sock_Normal.png', function ( texture ) {
 					
 					volume.material.normalMap = texture;
 					volume.material.needsUpdate = true;
@@ -395,14 +342,14 @@
 				sbConfig.set_collisions( 0x11 );
 
 				// Friction
-				sbConfig.set_kDF( 0.001 );
+				sbConfig.set_kDF( 0.01 );
 				// Damping
-				sbConfig.set_kDP( 1 );
+				sbConfig.set_kDP( 0.1 );
 				// Pressure
 				sbConfig.set_kPR( pressure );
 				// Stiffness
-				volumeSoftBody.get_m_materials().at( 0 ).set_m_kLST( 0.9 );
-				volumeSoftBody.get_m_materials().at( 0 ).set_m_kAST( 0.9 );
+				volumeSoftBody.get_m_materials().at( 0 ).set_m_kLST( 1.2 );
+				volumeSoftBody.get_m_materials().at( 0 ).set_m_kAST( 1.2 );
 
 				volumeSoftBody.setTotalMass( mass, false );
 				Ammo.castObject( volumeSoftBody, Ammo.btCollisionObject ).getCollisionShape().setMargin( margin );
@@ -418,22 +365,11 @@
 				const obstacle = createParalellepiped( 0.01, 0.01, 0.01, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0x606060 } ) );
 				scene.add(obstacle);
 
-
-				
-				const influence = 1;
-				
-				
-				//volumeSoftBody.appendAnchor( 10, obstacle.userData.physicsBody, false, influence );
-				
-				
+				const influence = 1;	
 				for ( var i = 0; i <120; i ++ ){
 					volumeSoftBody.appendAnchor( i, obstacle.userData.physicsBody, false, influence );
 				}
 				
-				
-				
-
-
 				softBodies.push( volume );
 
 			}
@@ -443,11 +379,8 @@
 				const threeObject = new THREE.Mesh( new THREE.BoxGeometry( sx, sy, sz, 1, 1, 1 ), material );
 				const shape = new Ammo.btBoxShape( new Ammo.btVector3( sx * 0.5, sy * 0.5, sz * 0.5 ) );
 				shape.setMargin( margin );
-
 				createRigidBody( threeObject, shape, mass, pos, quat );
-
 				return threeObject;
-
 			}
 
 			function createRigidBody( threeObject, physicsShape, mass, pos, quat ) {
@@ -469,14 +402,9 @@
 
 				threeObject.userData.physicsBody = body;
 
-				//HERE
-				//scene.add( threeObject );
-
 				if ( mass > 0 ) {
 
 					rigidBodies.push( threeObject );
-
-					// Disable deactivation
 					body.setActivationState( 4 );
 
 				}
@@ -497,7 +425,6 @@
 							( event.clientX / window.innerWidth ) * 2 - 1,
 							- ( event.clientY / window.innerHeight ) * 2 + 1
 						);
-
 						clickRequest = true;
 
 					}
@@ -508,49 +435,17 @@
 					clickRequest = false;
 					for (var i=0; i<ballObjects.length; i++) {
 						try {
-							//ballObjects[i].dispose();
 							scene.remove(ballObjects[i]);
 						} catch (e) {
 							
 						}
-						
 					}
 					ballObjects = [];
-					//console.log("ball objects length: " + ballObjects.length);
 				});
 
 			}
 
 			function processClick() {
-
-				/*
-				if ( clickRequest ) {
-
-					raycaster.setFromCamera( mouseCoords, camera );
-
-					// Creates a ball
-					const ballMass = 2;
-					const ballRadius = 5;
-
-					const ball = new THREE.Mesh( new THREE.SphereGeometry( ballRadius, 18, 16 ), ballMaterial );
-					ball.castShadow = true;
-					ball.receiveShadow = true;
-					const ballShape = new Ammo.btSphereShape( ballRadius );
-					ballShape.setMargin( margin );
-					pos.copy( raycaster.ray.direction );
-					pos.add( raycaster.ray.origin);
-					quat.set( 0, 0, 0, 1 );
-					const ballBody = createRigidBody( ball, ballShape, ballMass, pos, quat );
-					ballBody.setFriction( 0 );
-
-					pos.copy( raycaster.ray.direction );
-					pos.multiplyScalar( 1000 );
-					ballBody.setLinearVelocity( new Ammo.btVector3( pos.x, pos.y, pos.z ) );
-
-					clickRequest = false;
-
-				}
-				*/
 
 			}
 
@@ -615,10 +510,9 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
-
+				requestAnimationFrame( animate )
 				render();
-				stats.update();
+				//stats.update();
 
 			}
 
