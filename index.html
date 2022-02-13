@@ -11,8 +11,9 @@
 		</style>
 	</head>
 	<body>
-		<div id="container"></div>
+		<div id="container"><?php echo date('Y/m/d') ?></div>
 		<script src="js/libs/ammo.wasm.js"></script>
+
 		<script type="module">
 
 			import * as THREE from './build/three.module.js';
@@ -23,9 +24,11 @@
 			import { RGBELoader } from './jsm/loaders/RGBELoader.js';
 			import { RoughnessMipmapper } from './jsm/utils/RoughnessMipmapper.js';
 
+            var TEXCOUNT = 5;
 			// Graphics variables
-			var mouseMesh;
-			var ballObjects = [];
+            var ball;
+            var ballBody; 
+			//var ballObjects = [];
 			var mouse = {x: 0, y: 0};
 
 			let container, stats;
@@ -307,23 +310,26 @@
 				//scene.add( volume );
 
 				var folder = 'textures/SockTextures/';
-				var sockTex = 'Sock_3.png';
+                var texIndex = Math.floor(Math.random() * TEXCOUNT).toString();
+
+				var sockTex = 'Sock_' + texIndex + '.png';
 
 				var path = folder + sockTex;
 				textureLoader.load( path, function ( texture ) {
 					
 					volume.material.map = texture;
 					volume.material.needsUpdate = true;
-
-				} );
-
-				textureLoader.load( 'textures/Sock_Normal.png', function ( texture ) {
+                    textureLoader.load( 'textures/Sock_Normal.png', function ( texture ) {
 					
-					volume.material.normalMap = texture;
-					volume.material.needsUpdate = true;
-					scene.add( volume );
+                        volume.material.normalMap = texture;
+                        volume.material.needsUpdate = true;
+                        scene.add( volume );
+
+                    } );
 
 				} );
+
+				
 
 				// Volume physic object
 
@@ -371,6 +377,7 @@
 				}
 				
 				softBodies.push( volume );
+                
 
 			}
 
@@ -431,6 +438,7 @@
 
 				} );
 
+                /*
 				window.addEventListener('pointerup', function(event){
 					clickRequest = false;
 					for (var i=0; i<ballObjects.length; i++) {
@@ -442,6 +450,7 @@
 					}
 					ballObjects = [];
 				});
+                */
 
 			}
 
@@ -450,13 +459,28 @@
 			}
 
 			function createMouseGeometry(){
-				var mouseGeometry = new THREE.SphereGeometry(10, 0, 0);
-				var mouseMaterial = new THREE.MeshBasicMaterial({
-					color: 0x0000ff
-				});
-				mouseMesh = new THREE.Mesh(mouseGeometry, mouseMaterial);
-				mouseMesh.position.z = 0;
-				//scene.add(mouseMesh);
+
+                const ballMass = 0;
+                const ballRadius = 7;
+
+                ball = new THREE.Mesh( new THREE.SphereGeometry( ballRadius, 18, 16 ), ballMaterial );
+                ball.castShadow = true;
+                ball.receiveShadow = true;
+                const ballShape = new Ammo.btSphereShape( ballRadius );
+                ballShape.setMargin( margin );
+                quat.set( 0, 0, 0, 1 );
+                ballBody = createRigidBody( ball, ballShape, ballMass, pos, quat );
+                ballBody.setFriction( 0 );
+
+                ballBody.setCollisionFlags( 2 );
+                ballBody.setActivationState( 4 );
+
+
+
+                //ballObjects.push(ball);
+                ball.position.copy(pos);
+
+                scene.add(ball);
 			}
 
 			// Follows the mouse event
@@ -473,29 +497,15 @@
 				var dir = vector.sub( camera.position ).normalize();
 				var distance = - camera.position.z / dir.z;
 				var pos = camera.position.clone().add( dir.multiplyScalar( distance ) );
-				mouseMesh.position.copy(pos);
 
-				if(clickRequest && ballObjects.length < 20){
+                ball.position.copy(pos);
+                
 
-					const ballMass = 1;
-					const ballRadius = 7;
-
-					const ball = new THREE.Mesh( new THREE.SphereGeometry( ballRadius, 18, 16 ), ballMaterial );
-					ball.castShadow = true;
-					ball.receiveShadow = true;
-					const ballShape = new Ammo.btSphereShape( ballRadius );
-					ballShape.setMargin( margin );
-					quat.set( 0, 0, 0, 1 );
-					const ballBody = createRigidBody( ball, ballShape, ballMass, pos, quat );
-					ballBody.setFriction( 0 );
-
-					scene.add(ball);
-					ballObjects.push(ball);
-
-					ball.position.copy(pos);
-
-					//console.log("ball objects length: " + ballObjects.length);
-				}	
+                const velocity = new Ammo.btVector3(ball.position.x, ball.position.y, ball.position.z);                
+                ballBody.setLinearVelocity(velocity);
+                //ballBody.needUpdate = true;
+                Ammo.destroy(velocity);
+                
 
 			};
 
@@ -518,7 +528,7 @@
 
 			function render() {
 
-				const deltaTime = clock.getDelta();
+				const deltaTime = clock.getDelta();	
 
 				updatePhysics( deltaTime );
 
