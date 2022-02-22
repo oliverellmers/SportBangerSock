@@ -90,7 +90,7 @@
 				renderer.outputEncoding = THREE.sRGBEncoding;
 
 				//Scene
-				camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 1, 1000 );
+				camera = new THREE.PerspectiveCamera( 20, window.innerWidth / window.innerHeight, 1, 1000 );
 				camera.position.set( -160, -280, -160 );
 				camera.lookAt(0, -60, 0 );
 
@@ -354,8 +354,8 @@
 					true );
 
 				const sbConfig = volumeSoftBody.get_m_cfg();
-				sbConfig.set_viterations( 12 );
-				sbConfig.set_piterations( 12 );
+				sbConfig.set_viterations( 10 );
+				sbConfig.set_piterations( 10 );
 
 				// Soft-soft and soft-rigid collisions
 				sbConfig.set_collisions( 0x11 );
